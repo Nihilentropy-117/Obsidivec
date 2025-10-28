@@ -428,13 +428,26 @@ uvicorn (main process)
 
 ### Embedding Model Selection
 
-| Model | Size | Speed | Quality |
-|-------|------|-------|---------|
-| `all-MiniLM-L6-v2` | 80MB | Fast | Good (default) |
-| `all-mpnet-base-v2` | 420MB | Medium | Better |
-| `multi-qa-mpnet-base-dot-v1` | 420MB | Medium | Best for Q&A |
+Choose the best model for your use case based on the [MTEB benchmark](https://huggingface.co/spaces/mteb/leaderboard):
 
-Set via `EMBEDDING_MODEL` environment variable.
+| Model | Parameters | Speed | Quality | Use Case |
+|-------|------------|-------|---------|----------|
+| `BAAI/bge-small-en-v1.5` | 33M | Very Fast | Good | Best for speed & efficiency |
+| `sentence-transformers/all-MiniLM-L6-v2` | 22M | Very Fast | Good | Default, fastest option |
+| `nomic-ai/nomic-embed-text-v1.5` | 137M | Medium | Excellent | Best accuracy, matryoshka embeddings |
+| `BAAI/bge-base-en-v1.5` | 109M | Medium | Very Good | Balanced performance |
+| `sentence-transformers/all-mpnet-base-v2` | 110M | Medium | Very Good | General purpose |
+| `Alibaba-NLP/gte-base-en-v1.5` | 137M | Medium | Very Good | Strong retrieval performance |
+
+**2025 Recommendations**:
+- **Speed Priority**: `BAAI/bge-small-en-v1.5` (33M params, ~14ms latency)
+- **Balanced**: `BAAI/bge-base-en-v1.5` (excellent accuracy/speed trade-off)
+- **Maximum Accuracy**: `nomic-ai/nomic-embed-text-v1.5` (supports matryoshka embeddings, 768→128 dims)
+- **Multilingual**: `Alibaba-NLP/gte-multilingual-base` (305M params, 100+ languages)
+
+Set via `EMBEDDING_MODEL` environment variable in `.env` file.
+
+**Note**: Larger models provide better semantic understanding but require more RAM and slower indexing. For most personal vaults (<10K notes), `bge-small` or `bge-base` offer the best balance.
 
 ### ChromaDB Optimization
 
