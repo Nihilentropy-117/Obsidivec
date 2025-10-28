@@ -1,0 +1,10 @@
+fastapi~=0.115.9
+uvicorn[standard]
+chromadb~=1.0.12
+sentence-transformers
+watchdog
+python-frontmatter
+requests~=2.32.3
+pydantic~=2.11.5
+python-telegram-bot
+openai

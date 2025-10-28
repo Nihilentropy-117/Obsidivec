@@ -1,0 +1,32 @@
+# IDE and tool configurations
+.claude/
+.serena/
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+ENV/
+
+# Data directories
+chroma_data/*
+obsidian_config/*
+vault/*
+!chroma_data/.gitkeep
+!vault/.gitkeep
+!obsidian_config/.gitkeep
+
+# Secrets and environment
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
