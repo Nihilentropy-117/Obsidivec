@@ -6,20 +6,30 @@ A powerful vector search engine for Obsidian vaults with integrated Telegram bot
 
 - **Vector Search**: Semantic search across your Obsidian vault using sentence transformers
 - **Real-time Sync**: Automatic file watching and indexing with ChromaDB
+- **Obsidian Web Interface**: Full Obsidian desktop app accessible via browser with VNC
+- **Obsidian Sync Support**: Enable Obsidian Sync through the web interface for cloud synchronization
 - **Telegram Bot**: Optional Telegram bot interface for querying your vault
 - **AI-Powered Responses**: LLM integration via OpenRouter for intelligent summaries
 - **Custom Chunking**: Flexible document chunking with frontmatter configuration
 - **Docker Support**: Fully containerized deployment with Docker Compose
 - **REST API**: FastAPI-based API with authentication support
-- **Obsidian Integration**: Bundled with Obsidian web interface
+- **Shared Vault**: Single vault directory shared between Obsidian app and vector search
 
 ## Architecture
 
-The system consists of three main components running concurrently:
+The system consists of **two Docker containers** working together:
 
+### Container 1: Vector Search Service (`obsidian-search`)
+Running three concurrent components:
 1. **FastAPI Server** (main thread): REST API for vector search operations
 2. **File Watcher** (daemon thread): Monitors vault for changes and maintains index
 3. **Telegram Bot** (separate process): Optional bot interface for queries
+
+### Container 2: Obsidian Web Interface (`obsidian`)
+- **Full Obsidian Desktop App**: Complete Obsidian application accessible via web browser
+- **VNC Access**: Web-based VNC interface for GUI interaction
+- **Shared Vault**: Mounts the same vault directory as the search service
+- **Obsidian Sync**: Can enable official Obsidian Sync for cloud synchronization
 
 ## Quick Start
 
@@ -60,6 +70,89 @@ The system will now:
 - Launch Obsidian web interface on `http://localhost:3000`
 - Initialize the Telegram bot (if enabled)
 - Begin indexing your vault
+
+## Using the Obsidian Web Interface
+
+The docker-compose setup includes a full Obsidian desktop application accessible through your web browser.
+
+### Accessing Obsidian
+
+1. **Open your browser** and navigate to `http://localhost:3000`
+2. You'll see the Obsidian desktop application running in a web-based VNC viewer
+3. The vault is automatically mounted at `/vault` inside the container
+
+### First-Time Setup
+
+On first launch:
+1. Obsidian will ask you to open or create a vault
+2. Select **"Open folder as vault"**
+3. Navigate to `/vault` directory
+4. Click **"Open"** to open your vault
+
+### Enabling Obsidian Sync
+
+If you have an Obsidian Sync subscription, you can enable cloud synchronization:
+
+1. **Login to Obsidian** through the web interface
+2. Go to **Settings** (gear icon) → **Core plugins**
+3. Enable **"Sync"** plugin
+4. Click **"Sync"** in the left sidebar
+5. **Sign in** with your Obsidian account
+6. Choose to either:
+   - **Connect to existing vault**: Sync with your existing cloud vault
+   - **Create new remote vault**: Upload this vault to Obsidian Sync
+
+### What Happens After Enabling Sync
+
+Once Obsidian Sync is enabled and connected:
+
+1. **Bidirectional Synchronization**:
+   - Changes made in the web interface sync to Obsidian cloud
+   - Changes from other devices sync down to the container
+   - The local `/vault` directory stays in sync
+
+2. **Automatic Vector Re-indexing**:
+   - The file watcher detects all changes written to `/vault`
+   - New/modified notes are automatically re-indexed
+   - Vector search stays up-to-date with your synchronized vault
+
+3. **Multi-Device Workflow**:
+   - Edit on mobile → Syncs to cloud → Downloads to container → Auto-indexed
+   - Edit in web interface → Syncs to cloud → Available on all devices
+   - Query via Telegram bot → Searches the synchronized vault
+
+### Shared Vault Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Obsidian Cloud                        │
+│                  (if Sync enabled)                       │
+└────────────────────┬────────────────────────────────────┘
+                     │ Bidirectional Sync
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│              Host: ./vault/ directory                    │
+│         (shared between both containers)                 │
+└───────────┬─────────────────────────────┬───────────────┘
+            │                             │
+            ▼                             ▼
+  ┌─────────────────┐         ┌──────────────────────┐
+  │ Obsidian        │         │ Vector Search        │
+  │ Container       │         │ Container            │
+  │                 │         │                      │
+  │ • Web UI        │         │ • File Watcher       │
+  │ • VNC Access    │         │ • Auto-indexing      │
+  │ • Sync Plugin   │         │ • ChromaDB           │
+  │ • /vault mount  │         │ • /vault mount (ro)  │
+  └─────────────────┘         └──────────────────────┘
+```
+
+**Key Points**:
+- Both containers share the same `./vault/` directory from the host
+- Obsidian container has **read/write** access (can modify files)
+- Search container has **read-only** access (monitors for changes)
+- File watcher automatically detects and indexes all changes
+- Obsidian Sync keeps everything synchronized across devices
 
 ## Configuration
 
