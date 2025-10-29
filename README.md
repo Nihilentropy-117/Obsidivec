@@ -2,6 +2,41 @@
 
 A powerful vector search engine for Obsidian vaults with integrated Telegram bot support and AI-powered query responses.
 
+## TL;DR - Quick Start
+
+1. **Clone and configure**:
+   ```bash
+   git clone https://github.com/Nihilentropy-117/Obsidivec.git
+   cd Obsidivec
+   cp config.example.toml config.toml
+   ```
+
+2. **Edit `config.toml`** - Add your API keys:
+   - `telegram.api_key` - From [@BotFather](https://t.me/botfather)
+   - `llm.openrouter_key` - From [OpenRouter](https://openrouter.ai)
+   - `server.api_key` - Any secret string for API authentication
+
+3. **Start services**:
+   ```bash
+   docker-compose up --build -d
+   ```
+
+4. **Setup Obsidian Sync**:
+   - Open `http://localhost:3000` in your browser
+   - In Obsidian, open `/vault` as your vault
+   - Login to your Obsidian account
+   - Enable Sync plugin and connect to your cloud vault
+   - Let it sync (your notes will auto-index)
+
+5. **Query via Telegram**:
+   - Message your Telegram bot
+   - Ask questions about your notes
+   - Get AI-powered summaries from your vault
+
+**Done!** Your vault is now searchable via Telegram with AI assistance.
+
+---
+
 ## Features
 
 - **Vector Search**: Semantic search across your Obsidian vault using sentence transformers
