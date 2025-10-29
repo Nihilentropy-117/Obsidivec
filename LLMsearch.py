@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 # --- Configuration ---
-SERVER_URL = "http://localhost:8000"
+SERVER_URL = os.getenv("API_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_KEY", "your_fastapi_key_here")  # Key for your FastAPI server
 OPENROUTER_KEY = os.getenv("OPENROUTER_KEY", None)
 

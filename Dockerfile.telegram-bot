@@ -1,0 +1,19 @@
+# Lightweight container for Telegram bot
+FROM python:3.11-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Install only bot-specific dependencies
+RUN pip install --no-cache-dir \
+    python-telegram-bot \
+    requests \
+    openai \
+    python-dotenv
+
+# Copy only bot files
+COPY telegram_bot.py .
+COPY LLMsearch.py .
+
+# Run the bot
+CMD ["python", "telegram_bot.py"]

@@ -1,6 +1,5 @@
 import sys
 import threading
-import multiprocessing
 import time
 import glob
 import logging
@@ -25,20 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Global Configuration & Setup ---
-ENABLE_TELEGRAM_BOT = os.getenv("ENABLE_TELEGRAM_BOT", False)
-telegram_bot_process = None
-
-def start_telegram_bot():
-    """Starts the Telegram bot in a separate process."""
-    import asyncio
-    from telegram_bot import main as telegram_bot_main
-
-    try:
-        logger.info("Telegram bot process: Starting...")
-        asyncio.run(telegram_bot_main())
-    except Exception as e:
-        logger.error(f"FATAL error in Telegram bot process: {e}", exc_info=True)
-
 API_KEY = os.getenv("API_KEY", None)
 VAULT_PATH = os.getenv("VAULT_PATH", "/vault")
 DB_PATH = os.getenv("DB_PATH", "/app/db")
@@ -276,19 +261,9 @@ def start_watcher():
 @app.on_event("startup")
 def on_startup():
     """Starts the background file watcher thread on server startup."""
-    global telegram_bot_process
-
     logger.info("Starting background file watcher thread...")
     watcher_thread = threading.Thread(target=start_watcher, daemon=True)
     watcher_thread.start()
-
-    # Start Telegram bot in a separate process if enabled
-    if ENABLE_TELEGRAM_BOT:
-        logger.info("Starting Telegram bot in separate process...")
-        bot_process = multiprocessing.Process(target=start_telegram_bot, daemon=True)
-        bot_process.start()
-        telegram_bot_process = bot_process
-        logger.info(f"Telegram bot process started with PID: {bot_process.pid}")
 
 
 # --- API Endpoints ---

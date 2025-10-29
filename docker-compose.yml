@@ -1,6 +1,8 @@
 services:
-  obsidian-search:
-    build: .
+  obsidian-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     ports:
       - "8000:8000"
     volumes:
@@ -9,12 +11,26 @@ services:
     environment:
       - VAULT_PATH=/vault
       - DB_PATH=/app/db
-      - ENABLE_TELEGRAM_BOT=${ENABLE_TELEGRAM_BOT:-False}
+      - API_KEY=${API_KEY}
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram-bot
+    environment:
       - TELEGRAM_API_KEY=${TELEGRAM_API_KEY}
       - API_KEY=${API_KEY}
       - OPENROUTER_KEY=${OPENROUTER_KEY}
-
+      - API_URL=http://obsidian-api:8000
+    depends_on:
+      - obsidian-api
+    networks:
+      - app-network
     restart: unless-stopped
+
   obsidian:
     image: lscr.io/linuxserver/obsidian:latest
     container_name: obsidian
@@ -28,5 +44,11 @@ services:
     ports:
       - 3000:3000
       - 3001:3001
+    networks:
+      - app-network
     shm_size: "1gb"
     restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
