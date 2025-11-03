@@ -20,7 +20,7 @@ def main() -> None:
     # Handle all text messages
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    print("Bot running. Press Ctrl+C to stop.")
+    print("Bot is running. Press Ctrl+C to stop.")
     # This will block and keep the bot running
     application.run_polling(allowed_updates=None)
 
