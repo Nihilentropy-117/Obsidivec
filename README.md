@@ -2,6 +2,7 @@
 
 A powerful vector search engine for Obsidian vaults with integrated Telegram bot support and AI-powered query responses.
 
+
 ## TL;DR - Quick Start
 
 1. **Clone and configure**:
