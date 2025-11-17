@@ -8,3 +8,9 @@ requests~=2.32.3
 pydantic~=2.11.5
 python-telegram-bot
 openai
+
+# MCP Server dependencies
+mcp[cli]>=1.0.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
+httpx>=0.25.0
