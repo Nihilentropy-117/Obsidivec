@@ -1,16 +1,11 @@
-fastapi~=0.115.9
-uvicorn[standard]
-chromadb~=1.0.12
-sentence-transformers
-watchdog
-python-frontmatter
-requests~=2.32.3
-pydantic~=2.11.5
-python-telegram-bot
-openai
-
-# MCP Server dependencies
+fastapi>=0.115.0
+uvicorn>=0.32.0
 mcp[cli]>=1.0.0
-PyJWT>=2.8.0
-cryptography>=41.0.0
-httpx>=0.25.0
+python-frontmatter>=1.0.0
+PyYAML>=6.0
+rapidfuzz>=3.0.0
+pydantic>=2.0.0
+python-jose[cryptography]>=3.3.0
+chromadb>=1.0.0
+sentence-transformers>=2.0.0
+watchdog>=3.0.0

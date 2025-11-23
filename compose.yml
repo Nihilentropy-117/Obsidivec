@@ -1,0 +1,40 @@
+services:
+  obsidian-mcp:
+    build: .
+    container_name: obsidian-mcp
+    ports:
+      - "8000:8000"
+    environment:
+      - SKIP_AUTH_DEBUG=true
+      - VAULT_PATH=/vault
+      - DB_PATH=/app/chroma_data
+      # - AUTH_DOMAIN=your-auth0-domain.com  # Uncomment for production
+    volumes:
+      # CHANGE THIS to your actual vault path
+      - /home/nihil/Wanderland/WanderlandReX/:/vault:ro
+      # Persists generated SSL certs to avoid new warnings on restart
+      - mcp_certs:/app/certs
+      # Persists ChromaDB vector database
+      - chroma_data:/app/chroma_data
+    restart: unless-stopped
+
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian-sync
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./obsidian_config:/config
+      # Same vault directory (read/write for Obsidian Sync)
+      - /home/nihil/Wanderland/WanderlandReX/:/vault/WanderlandReX
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    shm_size: "1gb"
+    restart: unless-stopped
+
+volumes:
+  mcp_certs:
+  chroma_data:
