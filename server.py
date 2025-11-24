@@ -15,6 +15,9 @@ from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 import mcp.types as types
 from search import fuzzy, semantic
+import base_engine
+from io import StringIO
+import sys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp-obsidian")
@@ -158,7 +161,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="read_base",
-            description="Read and parse an Obsidian Base file to show its structure: filters, formulas, display mappings, and view configurations.",
+            description="Read an Obsidian Base file and return its contents.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -235,10 +238,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
                 return [types.TextContent(type="text", text=f"Error during reindexing: {str(e)}")]
 
         elif name == "list_bases":
-            base_files = [str(p.relative_to(VAULT_PATH)) for p in VAULT_PATH.rglob("*.base")]
+            base_files = base_engine.list_bases(str(VAULT_PATH))
             result = f"Found {len(base_files)} Base files:\n"
             if base_files:
-                result += "\n".join(f"- {f}" for f in sorted(base_files))
+                # Convert absolute paths to relative paths
+                relative_paths = [str(Path(f).relative_to(VAULT_PATH)) for f in base_files]
+                result += "\n".join(f"- {f}" for f in sorted(relative_paths))
             else:
                 result += "(No .base files found in vault)"
             return [types.TextContent(type="text", text=result)]
@@ -249,62 +254,22 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
                 return [types.TextContent(type="text", text=f"Error: Base file not found at {arguments['path']}")]
 
             try:
-                content = p.read_text(encoding='utf-8')
-                base_data = yaml.safe_load(content)
+                # Capture stdout from view_base
+                old_stdout = sys.stdout
+                sys.stdout = StringIO()
 
-                result = f"# Base: {p.name}\n\n"
+                base_engine.view_base(str(VAULT_PATH), str(p))
 
-                # Global filters
-                if "filters" in base_data:
-                    result += "## Global Filters\n"
-                    result += f"```yaml\n{yaml.dump(base_data['filters'], default_flow_style=False)}```\n\n"
+                # Get the captured output
+                output = sys.stdout.getvalue()
+                sys.stdout = old_stdout
 
-                # Formulas
-                if "formulas" in base_data:
-                    result += "## Formulas (Computed Properties)\n"
-                    for name, formula in base_data['formulas'].items():
-                        result += f"- **{name}**: `{formula}`\n"
-                    result += "\n"
+                return [types.TextContent(type="text", text=output)]
 
-                # Display mappings
-                if "display" in base_data:
-                    result += "## Display Mappings\n"
-                    for prop, display_name in base_data['display'].items():
-                        result += f"- `{prop}` → **{display_name}**\n"
-                    result += "\n"
-
-                # Views
-                if "views" in base_data:
-                    result += f"## Views ({len(base_data['views'])} total)\n\n"
-                    for idx, view in enumerate(base_data['views'], 1):
-                        view_name = view.get('name', f'View {idx}')
-                        view_type = view.get('type', 'unknown')
-                        result += f"### {idx}. {view_name} (type: {view_type})\n\n"
-
-                        if 'filters' in view:
-                            result += "**Filters:**\n"
-                            result += f"```yaml\n{yaml.dump(view['filters'], default_flow_style=False)}```\n"
-
-                        if 'order' in view:
-                            result += f"**Sort order:** {', '.join(view['order'])}\n"
-
-                        if 'group_by' in view:
-                            result += f"**Group by:** {view['group_by']}\n"
-
-                        if 'agg' in view:
-                            result += f"**Aggregation:** {view['agg']}\n"
-
-                        if 'limit' in view:
-                            result += f"**Limit:** {view['limit']} items\n"
-
-                        result += "\n"
-
-                return [types.TextContent(type="text", text=result)]
-
-            except yaml.YAMLError as e:
-                return [types.TextContent(type="text", text=f"Error parsing YAML: {str(e)}")]
             except Exception as e:
-                return [types.TextContent(type="text", text=f"Error reading base file: {str(e)}")]
+                sys.stdout = old_stdout
+                logger.error(f"Error executing base view: {e}", exc_info=True)
+                return [types.TextContent(type="text", text=f"Error executing base view: {str(e)}")]
 
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
