@@ -19,6 +19,7 @@ COPY server.py .
 COPY start.sh .
 COPY search/ ./search/
 COPY base_engine.py .
+COPY templates.md .
 
 RUN chmod +x start.sh
 RUN mkdir /vault

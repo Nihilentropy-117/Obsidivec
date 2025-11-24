@@ -1,16 +1,10 @@
 import os
 import logging
-import yaml
-import frontmatter
 import secrets
-import uuid
 from pathlib import Path
 from typing import Dict
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
-from sse_starlette.sse import EventSourceResponse
-
-# MCP Imports
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 import mcp.types as types
@@ -25,6 +19,10 @@ logger = logging.getLogger("mcp-obsidian")
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "/vault"))
 SKIP_AUTH_DEBUG = os.getenv("SKIP_AUTH_DEBUG", "false").lower() == "true"
 SERVER_URL = os.getenv("SERVER_URL", "https://localhost:8000")
+
+# Static OAuth credentials (pre-shared with clients like Claude)
+STATIC_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "mcp-obsidian-client")
+STATIC_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET", "super-secret-obsidian-key-change-this")
 
 
 def generate_folder_structure(root_path: Path, prefix: str = "", is_last: bool = True) -> str:
@@ -57,8 +55,15 @@ def generate_folder_structure(root_path: Path, prefix: str = "", is_last: bool =
 
     return output
 
-# OAuth storage (in-memory for simplicity)
-oauth_clients: Dict[str, dict] = {}
+# OAuth storage - Pre-populate with static client
+oauth_clients: Dict[str, dict] = {
+    STATIC_CLIENT_ID: {
+        "client_id": STATIC_CLIENT_ID,
+        "client_secret": STATIC_CLIENT_SECRET,
+        "redirect_uris": ["https://claude.ai/api/mcp/auth_callback", "http://localhost:8080/callback"],
+        "client_name": "Claude"
+    }
+}
 oauth_codes: Dict[str, dict] = {}
 oauth_tokens: Dict[str, dict] = {}
 
@@ -109,7 +114,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="create_note",
-            description="Create a new note in the vault",
+            description="Create a new note in the vault. Always check get_templates before creating a note.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -172,6 +177,11 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["path"]
             }
+        ),
+        types.Tool(
+            name="get_templates",
+            description="Get templates for new markdown notes. ALWAYS call this before calling create_note.",
+            inputSchema={"type": "object", "properties": {}}
         )
     ]
 
@@ -271,20 +281,18 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
                 logger.error(f"Error executing base view: {e}", exc_info=True)
                 return [types.TextContent(type="text", text=f"Error executing base view: {str(e)}")]
 
+        elif name == "get_templates":
+            with open("templates.md") as f:
+                templates = f.read()
+            return [types.TextContent(type="text", text=templates)]
+
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
         logger.error(f"Error calling tool {name}: {e}")
         return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
-# 2. Transport Management
-# SseServerTransport handles the session logic internally for us if we use it correctly.
-# We will create one transport instance per request in the SSE endpoint,
-# but we need a way to route the POST request to it.
-# The SDK's SseServerTransport is designed for Starlette.
-
 app = FastAPI()
 
-# We need a custom class to bridge FastAPI and MCP Transport
 class MCPServerApp:
     def __init__(self, mcp_server):
         self.mcp_server = mcp_server
@@ -362,22 +370,16 @@ async def oauth_metadata(request: Request):
 
 @app.post("/register")
 async def register_client(request: Request):
-    """Dynamic Client Registration (RFC 7591)"""
+    """
+    Return static pre-shared credentials.
+    Dynamic registration is disabled - only the pre-configured client works.
+    """
     body = await request.json()
-    client_id = str(uuid.uuid4())
-    client_secret = secrets.token_urlsafe(32)
 
-    oauth_clients[client_id] = {
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uris": body.get("redirect_uris", []),
-        "client_name": body.get("client_name", "Claude")
-    }
-
-    logger.info(f"Registered OAuth client: {client_id}")
+    logger.info(f"Registration request - returning static credentials")
     return JSONResponse({
-        "client_id": client_id,
-        "client_secret": client_secret,
+        "client_id": STATIC_CLIENT_ID,
+        "client_secret": STATIC_CLIENT_SECRET,
         "client_id_issued_at": 1234567890,
         "redirect_uris": body.get("redirect_uris", [])
     })
@@ -392,9 +394,10 @@ async def authorize(
     code_challenge: str = None,
     code_challenge_method: str = None
 ):
-    """OAuth Authorization Endpoint - Auto-approve for simplicity"""
-    if not client_id or client_id not in oauth_clients:
-        return HTMLResponse("<h1>Invalid client</h1>", status_code=400)
+    """OAuth Authorization Endpoint"""
+    # Check if the requested Client ID matches our static one
+    if client_id != STATIC_CLIENT_ID:
+        return HTMLResponse(f"<h1>Invalid client: {client_id}</h1>", status_code=400)
 
     # Auto-approve (skip user consent for simplicity)
     code = secrets.token_urlsafe(32)
@@ -408,20 +411,21 @@ async def authorize(
     logger.info(f"Issued authorization code for client {client_id}")
 
     # Redirect back to Claude with the code
-    redirect_url = f"{redirect_uri}?code={code}&state={state}" if state else f"{redirect_uri}?code={code}"
+    separator = "&" if "?" in redirect_uri else "?"
+    redirect_url = f"{redirect_uri}{separator}code={code}"
+    if state:
+        redirect_url += f"&state={state}"
+
     return RedirectResponse(redirect_url)
 
 @app.post("/token")
 async def token_endpoint(
-    request: Request,
     grant_type: str = Form(None),
     code: str = Form(None),
-    redirect_uri: str = Form(None),
     client_id: str = Form(None),
     client_secret: str = Form(None),
-    code_verifier: str = Form(None)
 ):
-    """OAuth Token Endpoint"""
+    """OAuth Token Endpoint with client secret validation"""
     if grant_type != "authorization_code":
         return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
 
@@ -430,9 +434,15 @@ async def token_endpoint(
 
     code_data = oauth_codes[code]
 
-    # Validate client
+    # 1. Validate Client ID
     if code_data["client_id"] != client_id:
-        return JSONResponse({"error": "invalid_client"}, status_code=400)
+        return JSONResponse({"error": "invalid_client_id"}, status_code=400)
+
+    # 2. Validate Client Secret (CRITICAL SECURITY FIX)
+    stored_client = oauth_clients.get(client_id)
+    if not stored_client or stored_client["client_secret"] != client_secret:
+        logger.warning(f"Failed secret check for client {client_id}")
+        return JSONResponse({"error": "invalid_client_secret"}, status_code=401)
 
     # Generate access token
     access_token = secrets.token_urlsafe(32)

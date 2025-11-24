@@ -5,22 +5,23 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SKIP_AUTH_DEBUG=true
+      - SKIP_AUTH_DEBUG=false
       - VAULT_PATH=/vault
       - DB_PATH=/app/chroma_data
-      # - AUTH_DOMAIN=your-auth0-domain.com  # Uncomment for production
+
+      # Static OAuth credentials
+      - OAUTH_CLIENT_ID=mcp-obsidian-client
+      - OAUTH_CLIENT_SECRET=super-secret-obsidian-key-change-this
     volumes:
-      # CHANGE THIS to your actual vault path
-      - /home/nihil/Wanderland/WanderlandReX/:/vault:ro
-      # Persists generated SSL certs to avoid new warnings on restart
+      - /home/nihil/Wanderland/WanderlandReX/:/vault
       - mcp_certs:/app/certs
-      # Persists ChromaDB vector database
       - chroma_data:/app/chroma_data
     restart: unless-stopped
 
   obsidian:
     image: lscr.io/linuxserver/obsidian:latest
     container_name: obsidian-sync
+    stop_grace_period: 5s
     environment:
       - PUID=1000
       - PGID=1000
