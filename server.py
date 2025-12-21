@@ -1,302 +1,260 @@
+"""
+MCP Server for Obsidian Vault
+Rewritten with security and architectural fixes.
+"""
+
 import os
 import logging
 import secrets
+import hashlib
+import base64
+import threading
+import time
 from pathlib import Path
-from typing import Dict
-from fastapi import FastAPI, Request, Form
+from typing import Optional
+from dataclasses import dataclass, field
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
 import mcp.types as types
+
 from search import fuzzy, semantic
 import base_engine
-from io import StringIO
-import sys
+import tools
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp-obsidian")
 
+# Configuration
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "/vault"))
+DB_PATH = Path(os.getenv("DB_PATH", "/app/chroma_data"))
 SKIP_AUTH_DEBUG = os.getenv("SKIP_AUTH_DEBUG", "false").lower() == "true"
-SERVER_URL = os.getenv("SERVER_URL", "https://localhost:8000")
 
-# Static OAuth credentials (pre-shared with clients like Claude)
-STATIC_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "mcp-obsidian-client")
-STATIC_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET", "super-secret-obsidian-key-change-this")
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+if not OPENROUTER_API_KEY:
+    raise RuntimeError(
+        "OPENROUTER_API_KEY environment variable must be set. "
+        "Get your API key from https://openrouter.ai"
+    )
+
+# OAuth credentials - MUST be set via environment in production
+STATIC_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID")
+STATIC_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET")
+
+if not SKIP_AUTH_DEBUG and (not STATIC_CLIENT_ID or not STATIC_CLIENT_SECRET):
+    raise RuntimeError(
+        "OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET must be set. "
+        "Set SKIP_AUTH_DEBUG=true for development only."
+    )
+
+# Token lifetimes
+AUTH_CODE_LIFETIME = timedelta(minutes=10)
+ACCESS_TOKEN_LIFETIME = timedelta(hours=1)
 
 
-def generate_folder_structure(root_path: Path, prefix: str = "", is_last: bool = True) -> str:
-    """
-    Generate a tree-like folder structure (directories only).
+@dataclass
+class AuthCode:
+    client_id: str
+    redirect_uri: str
+    code_challenge: Optional[str]
+    code_challenge_method: Optional[str]
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    Args:
-        root_path: Root directory to scan
-        prefix: Prefix for tree formatting
-        is_last: Whether this is the last item in current level
+    def is_expired(self) -> bool:
+        return datetime.now(timezone.utc) > self.created_at + AUTH_CODE_LIFETIME
 
-    Returns:
-        Formatted string representing the folder structure
-    """
+
+@dataclass
+class AccessToken:
+    client_id: str
+    scope: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def is_expired(self) -> bool:
+        return datetime.now(timezone.utc) > self.created_at + ACCESS_TOKEN_LIFETIME
+
+
+class OAuthStore:
+    """Thread-safe OAuth storage with expiration cleanup."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._codes: dict[str, AuthCode] = {}
+        self._tokens: dict[str, AccessToken] = {}
+        self._cleanup_interval = 300  # 5 minutes
+        self._start_cleanup_thread()
+
+    def _start_cleanup_thread(self):
+        def cleanup_loop():
+            while True:
+                time.sleep(self._cleanup_interval)
+                self._cleanup_expired()
+
+        thread = threading.Thread(target=cleanup_loop, daemon=True)
+        thread.start()
+
+    def _cleanup_expired(self):
+        with self._lock:
+            self._codes = {k: v for k, v in self._codes.items() if not v.is_expired()}
+            self._tokens = {k: v for k, v in self._tokens.items() if not v.is_expired()}
+
+    def store_code(self, code: str, data: AuthCode):
+        with self._lock:
+            self._codes[code] = data
+
+    def pop_code(self, code: str) -> Optional[AuthCode]:
+        with self._lock:
+            return self._codes.pop(code, None)
+
+    def store_token(self, token: str, data: AccessToken):
+        with self._lock:
+            self._tokens[token] = data
+
+    def validate_token(self, token: str) -> bool:
+        with self._lock:
+            data = self._tokens.get(token)
+            if data is None or data.is_expired():
+                return False
+            return True
+
+
+oauth_store = OAuthStore()
+
+
+def verify_pkce(code_verifier: str, code_challenge: str, method: str) -> bool:
+    """Verify PKCE code_verifier against stored code_challenge."""
+    if method == "plain":
+        return secrets.compare_digest(code_verifier, code_challenge)
+    elif method == "S256":
+        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        computed = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        return secrets.compare_digest(computed, code_challenge)
+    return False
+
+
+def generate_folder_structure(root_path: Path, prefix: str = "") -> str:
+    """Generate a tree-like folder structure (directories only)."""
     output = ""
-
-    # Get all subdirectories, sorted
-    subdirs = sorted([d for d in root_path.iterdir() if d.is_dir() and not d.name.startswith('.')], key=lambda x: x.name)
+    subdirs = sorted(
+        [d for d in root_path.iterdir() if d.is_dir() and not d.name.startswith(".")],
+        key=lambda x: x.name,
+    )
 
     for idx, subdir in enumerate(subdirs):
-        is_last_item = (idx == len(subdirs) - 1)
-
-        # Add the current directory with tree characters
-        connector = "└── " if is_last_item else "├── "
-        output += prefix + connector + subdir.name + "/\n"
-
-        # Recursively process subdirectories
-        extension = "    " if is_last_item else "│   "
-        output += generate_folder_structure(subdir, prefix + extension, is_last_item)
+        is_last = idx == len(subdirs) - 1
+        connector = "└── " if is_last else "├── "
+        output += f"{prefix}{connector}{subdir.name}/\n"
+        extension = "    " if is_last else "│   "
+        output += generate_folder_structure(subdir, prefix + extension)
 
     return output
 
-# OAuth storage - Pre-populate with static client
-oauth_clients: Dict[str, dict] = {
-    STATIC_CLIENT_ID: {
-        "client_id": STATIC_CLIENT_ID,
-        "client_secret": STATIC_CLIENT_SECRET,
-        "redirect_uris": ["https://claude.ai/api/mcp/auth_callback", "http://localhost:8080/callback"],
-        "client_name": "Claude"
-    }
-}
-oauth_codes: Dict[str, dict] = {}
-oauth_tokens: Dict[str, dict] = {}
 
-# 1. Create Server
+class FileWatcher:
+    """Manages semantic search file watcher with health monitoring."""
+
+    def __init__(self, vault_path: Path, db_path: Path):
+        self.vault_path = vault_path
+        self.db_path = db_path
+        self._search_engine: Optional[semantic.SemanticSearchEngine] = None
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._healthy = False
+
+    def start(self):
+        if self._thread is not None:
+            return
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+            self._thread = None
+
+    def _run(self):
+        try:
+            self._search_engine = semantic.get_search_engine(self.vault_path, self.db_path)
+            self._search_engine.start_watcher()
+            self._healthy = True
+            logger.info("File watcher started successfully")
+
+            while not self._stop_event.wait(timeout=30):
+                pass  # Could add health checks here
+
+        except Exception as e:
+            self._healthy = False
+            logger.error(f"File watcher failed: {e}", exc_info=True)
+
+    def is_healthy(self) -> bool:
+        return self._healthy
+
+    def get_search_engine(self):
+        with self._lock:
+            if self._search_engine is None:
+                self._search_engine = semantic.get_search_engine(self.vault_path, self.db_path)
+            return self._search_engine
+
+
+file_watcher = FileWatcher(VAULT_PATH, DB_PATH)
+
+# Initialize tool handler
+tool_handler = tools.ToolHandler(
+    vault_path=VAULT_PATH,
+    file_watcher=file_watcher,
+    folder_structure_generator=generate_folder_structure,
+)
+
+
+# MCP Server Setup
 server = Server("Obsidian Vault")
+
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
-        types.Tool(
-            name="read_note",
-            description="Read the full content of a markdown note from the vault",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Relative path to the note (e.g., 'Projects/Alpha.md')"
-                    }
-                },
-                "required": ["path"]
-            }
-        ),
-        types.Tool(
-            name="search_vault",
-            description="Search for notes in the vault using fuzzy matching on filenames, content, or both",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query"
-                    },
-                    "search_mode": {
-                        "type": "string",
-                        "enum": ["filename", "content", "both"],
-                        "description": "Where to search: 'filename' for note names, 'content' for note contents, 'both' for both",
-                        "default": "filename"
-                    }
-                },
-                "required": ["query"]
-            }
-        ),
-        types.Tool(
-            name="list_notes",
-            description="List all markdown notes in the vault",
-            inputSchema={"type": "object", "properties": {}}
-        ),
-        types.Tool(
-            name="create_note",
-            description="Create a new note in the vault. Always check get_templates before creating a note.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path where the note should be created"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Content of the note"
-                    }
-                },
-                "required": ["path", "content"]
-            }
-        ),
-        types.Tool(
-            name="semantic_search",
-            description="Search for notes using semantic/vector similarity. Chunks content by double newlines and returns full file contents when a chunk matches.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Semantic search query"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return",
-                        "default": 10
-                    }
-                },
-                "required": ["query"]
-            }
-        ),
-        types.Tool(
-            name="show_folder_structure",
-            description="Display the complete folder structure of the vault (directories only, no files)",
-            inputSchema={"type": "object", "properties": {}}
-        ),
-        types.Tool(
-            name="reindex_vault",
-            description="Manually refresh and regenerate embeddings for semantic search (use if vault contents changed)",
-            inputSchema={"type": "object", "properties": {}}
-        ),
-        types.Tool(
-            name="list_bases",
-            description="List all Obsidian Base files (.base) in the vault. Bases are database-like views of notes with filters and sorting.",
-            inputSchema={"type": "object", "properties": {}}
-        ),
-        types.Tool(
-            name="read_base",
-            description="Read an Obsidian Base file and return its contents.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Relative path to the .base file (e.g., 'Databases/Books.base')"
-                    }
-                },
-                "required": ["path"]
-            }
-        ),
-        types.Tool(
-            name="get_templates",
-            description="Get templates for new markdown notes. ALWAYS call this before calling create_note.",
-            inputSchema={"type": "object", "properties": {}}
-        )
-    ]
+    """Return list of available MCP tools."""
+    return tools.get_tool_definitions()
+
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-    try:
-        if name == "read_note":
-            p = VAULT_PATH / arguments["path"]
-            if p.exists():
-                return [types.TextContent(type="text", text=p.read_text(encoding='utf-8'))]
-            else:
-                return [types.TextContent(type="text", text=f"Error: Note not found at {arguments['path']}")]
+async def call_tool(
+    name: str, arguments: dict
+) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    """Execute a tool by name with given arguments."""
+    return await tool_handler.execute_tool(name, arguments)
 
-        elif name == "search_vault":
-            search_mode = arguments.get("search_mode", "filename")
-            result = fuzzy.search_vault(arguments["query"], VAULT_PATH, search_mode=search_mode)
-            return [types.TextContent(type="text", text=result)]
 
-        elif name == "list_notes":
-            files = [str(p.relative_to(VAULT_PATH)) for p in VAULT_PATH.rglob("*.md")]
-            result = f"Found {len(files)} notes:\n" + "\n".join(f"- {f}" for f in sorted(files)[:100])
-            if len(files) > 100:
-                result += f"\n... and {len(files) - 100} more"
-            return [types.TextContent(type="text", text=result)]
+# FastAPI Application
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if SKIP_AUTH_DEBUG:
+        logger.warning("⚠️  AUTH DISABLED - development mode only")
 
-        elif name == "create_note":
-            p = VAULT_PATH / arguments["path"]
-            if p.exists():
-                return [types.TextContent(type="text", text="Error: File already exists")]
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(arguments["content"], encoding='utf-8')
-            return [types.TextContent(type="text", text=f"Created note at {arguments['path']}")]
+    logger.info("Starting file watcher...")
+    file_watcher.start()
 
-        elif name == "semantic_search":
-            limit = arguments.get("limit", 10)
-            result = semantic.search_vault(arguments["query"], VAULT_PATH, limit=limit)
-            return [types.TextContent(type="text", text=result)]
+    yield
 
-        elif name == "show_folder_structure":
-            result = f"### Vault Folder Structure:\n\n{VAULT_PATH.name}/\n"
-            result += generate_folder_structure(VAULT_PATH)
-            if not result.strip().endswith("/"):
-                result += "\n(No subdirectories found)"
-            return [types.TextContent(type="text", text=result)]
+    logger.info("Shutting down...")
+    file_watcher.stop()
 
-        elif name == "reindex_vault":
-            try:
-                logger.info("Manual reindexing requested...")
-                db_path = Path(os.getenv("DB_PATH", "/app/chroma_data"))
-                search_engine = semantic.get_search_engine(VAULT_PATH, db_path)
-                search_engine.reindex()
 
-                # Get stats from ChromaDB
-                if search_engine.collection:
-                    count = search_engine.collection.count()
-                    result = f"✓ Vault reindexed successfully!\n\n"
-                    result += f"- Total vectors in database: {count}\n"
-                    result += f"- Database path: {db_path}\n"
-                else:
-                    result = f"✓ Reindex started in background\n"
-                return [types.TextContent(type="text", text=result)]
-            except Exception as e:
-                logger.error(f"Reindex error: {e}", exc_info=True)
-                return [types.TextContent(type="text", text=f"Error during reindexing: {str(e)}")]
+app = FastAPI(lifespan=lifespan)
 
-        elif name == "list_bases":
-            base_files = base_engine.list_bases(str(VAULT_PATH))
-            result = f"Found {len(base_files)} Base files:\n"
-            if base_files:
-                # Convert absolute paths to relative paths
-                relative_paths = [str(Path(f).relative_to(VAULT_PATH)) for f in base_files]
-                result += "\n".join(f"- {f}" for f in sorted(relative_paths))
-            else:
-                result += "(No .base files found in vault)"
-            return [types.TextContent(type="text", text=result)]
-
-        elif name == "read_base":
-            p = VAULT_PATH / arguments["path"]
-            if not p.exists():
-                return [types.TextContent(type="text", text=f"Error: Base file not found at {arguments['path']}")]
-
-            try:
-                # Capture stdout from view_base
-                old_stdout = sys.stdout
-                sys.stdout = StringIO()
-
-                base_engine.view_base(str(VAULT_PATH), str(p))
-
-                # Get the captured output
-                output = sys.stdout.getvalue()
-                sys.stdout = old_stdout
-
-                return [types.TextContent(type="text", text=output)]
-
-            except Exception as e:
-                sys.stdout = old_stdout
-                logger.error(f"Error executing base view: {e}", exc_info=True)
-                return [types.TextContent(type="text", text=f"Error executing base view: {str(e)}")]
-
-        elif name == "get_templates":
-            with open("templates.md") as f:
-                templates = f.read()
-            return [types.TextContent(type="text", text=templates)]
-
-        return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
-    except Exception as e:
-        logger.error(f"Error calling tool {name}: {e}")
-        return [types.TextContent(type="text", text=f"Error: {str(e)}")]
-
-app = FastAPI()
 
 class MCPServerApp:
-    def __init__(self, mcp_server):
+    def __init__(self, mcp_server: Server):
         self.mcp_server = mcp_server
-        # The transport handles the /messages endpoint internally
         self.transport = SseServerTransport("/messages")
 
     async def handle_sse(self, scope, receive, send):
@@ -307,82 +265,75 @@ class MCPServerApp:
     async def handle_messages(self, scope, receive, send):
         await self.transport.handle_post_message(scope, receive, send)
 
+
 mcp_app = MCPServerApp(server)
 
-import threading
-
-@app.on_event("startup")
-async def startup():
-    if SKIP_AUTH_DEBUG: logger.warning("⚠️ AUTH DISABLED")
-
-    # Initialize semantic search with file watcher in background thread
-    logger.info("Starting semantic search engine with file watcher...")
-    try:
-        def start_watcher_thread():
-            """Background thread to start the file watcher."""
-            try:
-                # Get DB path from environment or default
-                db_path = Path(os.getenv("DB_PATH", "/app/chroma_data"))
-                search_engine = semantic.get_search_engine(VAULT_PATH, db_path)
-                search_engine.start_watcher()
-                # Keep thread alive
-                while True:
-                    import time
-                    time.sleep(5)
-            except Exception as e:
-                logger.error(f"FATAL error in watcher thread: {e}", exc_info=True)
-
-        watcher_thread = threading.Thread(target=start_watcher_thread, daemon=True)
-        watcher_thread.start()
-        logger.info("✓ File watcher thread started")
-    except Exception as e:
-        logger.error(f"Failed to start file watcher: {e}")
-        logger.warning("Semantic search will not be available")
 
 @app.middleware("http")
-async def auth(request: Request, call_next):
-    if not SKIP_AUTH_DEBUG and request.url.path.startswith("/mcp"):
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return JSONResponse(status_code=401, headers={"WWW-Authenticate": "Bearer"}, content={})
-        # Validate token
-        token = auth_header.replace("Bearer ", "")
-        if token not in oauth_tokens:
-            return JSONResponse(status_code=401, headers={"WWW-Authenticate": "Bearer"}, content={"error": "invalid_token"})
+async def auth_middleware(request: Request, call_next):
+    # Skip auth for non-MCP endpoints and OAuth flow
+    path = request.url.path
+    if SKIP_AUTH_DEBUG or not path.startswith("/mcp"):
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={"error": "missing_token"},
+        )
+
+    token = auth_header[7:]  # Strip "Bearer "
+    if not oauth_store.validate_token(token):
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={"error": "invalid_token"},
+        )
+
     return await call_next(request)
 
-# OAuth 2.0 Endpoints
+
+# OAuth Endpoints
+
 
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_metadata(request: Request):
-    """OAuth 2.0 Authorization Server Metadata (RFC 8414)"""
-    base_url = request.url.scheme + "://" + request.url.netloc
-    return JSONResponse({
-        "issuer": base_url,
-        "authorization_endpoint": f"{base_url}/authorize",
-        "token_endpoint": f"{base_url}/token",
-        "registration_endpoint": f"{base_url}/register",
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
-        "code_challenge_methods_supported": ["S256", "plain"],
-        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"]
-    })
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    return JSONResponse(
+        {
+            "issuer": base,
+            "authorization_endpoint": f"{base}/authorize",
+            "token_endpoint": f"{base}/token",
+            "registration_endpoint": f"{base}/register",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"],
+            "code_challenge_methods_supported": ["S256", "plain"],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "client_secret_basic",
+            ],
+        }
+    )
+
 
 @app.post("/register")
 async def register_client(request: Request):
-    """
-    Return static pre-shared credentials.
-    Dynamic registration is disabled - only the pre-configured client works.
-    """
-    body = await request.json()
+    """Return static credentials. Dynamic registration disabled."""
+    if not STATIC_CLIENT_ID or not STATIC_CLIENT_SECRET:
+        raise HTTPException(503, "OAuth not configured")
 
-    logger.info(f"Registration request - returning static credentials")
-    return JSONResponse({
-        "client_id": STATIC_CLIENT_ID,
-        "client_secret": STATIC_CLIENT_SECRET,
-        "client_id_issued_at": 1234567890,
-        "redirect_uris": body.get("redirect_uris", [])
-    })
+    body = await request.json()
+    return JSONResponse(
+        {
+            "client_id": STATIC_CLIENT_ID,
+            "client_secret": STATIC_CLIENT_SECRET,
+            "client_id_issued_at": int(time.time()),
+            "redirect_uris": body.get("redirect_uris", []),
+        }
+    )
+
 
 @app.get("/authorize")
 async def authorize(
@@ -392,31 +343,34 @@ async def authorize(
     redirect_uri: str = None,
     state: str = None,
     code_challenge: str = None,
-    code_challenge_method: str = None
+    code_challenge_method: str = None,
 ):
-    """OAuth Authorization Endpoint"""
-    # Check if the requested Client ID matches our static one
     if client_id != STATIC_CLIENT_ID:
-        return HTMLResponse(f"<h1>Invalid client: {client_id}</h1>", status_code=400)
+        return HTMLResponse("<h1>Invalid client</h1>", status_code=400)
 
-    # Auto-approve (skip user consent for simplicity)
+    if response_type != "code":
+        return HTMLResponse("<h1>Invalid response_type</h1>", status_code=400)
+
     code = secrets.token_urlsafe(32)
-    oauth_codes[code] = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "code_challenge": code_challenge,
-        "code_challenge_method": code_challenge_method
-    }
+    oauth_store.store_code(
+        code,
+        AuthCode(
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
+        ),
+    )
 
-    logger.info(f"Issued authorization code for client {client_id}")
+    logger.info(f"Issued auth code for client {client_id}")
 
-    # Redirect back to Claude with the code
-    separator = "&" if "?" in redirect_uri else "?"
-    redirect_url = f"{redirect_uri}{separator}code={code}"
+    sep = "&" if "?" in redirect_uri else "?"
+    url = f"{redirect_uri}{sep}code={code}"
     if state:
-        redirect_url += f"&state={state}"
+        url += f"&state={state}"
 
-    return RedirectResponse(redirect_url)
+    return RedirectResponse(url)
+
 
 @app.post("/token")
 async def token_endpoint(
@@ -424,160 +378,198 @@ async def token_endpoint(
     code: str = Form(None),
     client_id: str = Form(None),
     client_secret: str = Form(None),
+    code_verifier: str = Form(None),
 ):
-    """OAuth Token Endpoint with client secret validation"""
     if grant_type != "authorization_code":
         return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
 
-    if code not in oauth_codes:
+    code_data = oauth_store.pop_code(code)
+    if code_data is None:
         return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
-    code_data = oauth_codes[code]
+    if code_data.is_expired():
+        return JSONResponse({"error": "invalid_grant", "error_description": "code expired"}, status_code=400)
 
-    # 1. Validate Client ID
-    if code_data["client_id"] != client_id:
-        return JSONResponse({"error": "invalid_client_id"}, status_code=400)
+    if code_data.client_id != client_id:
+        return JSONResponse({"error": "invalid_client"}, status_code=400)
 
-    # 2. Validate Client Secret (CRITICAL SECURITY FIX)
-    stored_client = oauth_clients.get(client_id)
-    if not stored_client or stored_client["client_secret"] != client_secret:
-        logger.warning(f"Failed secret check for client {client_id}")
-        return JSONResponse({"error": "invalid_client_secret"}, status_code=401)
+    # Validate client secret
+    if not secrets.compare_digest(client_secret or "", STATIC_CLIENT_SECRET or ""):
+        logger.warning(f"Invalid client secret for {client_id}")
+        return JSONResponse({"error": "invalid_client"}, status_code=401)
 
-    # Generate access token
+    # Validate PKCE if code_challenge was provided
+    if code_data.code_challenge:
+        if not code_verifier:
+            return JSONResponse(
+                {"error": "invalid_request", "error_description": "code_verifier required"},
+                status_code=400,
+            )
+        method = code_data.code_challenge_method or "plain"
+        if not verify_pkce(code_verifier, code_data.code_challenge, method):
+            return JSONResponse(
+                {"error": "invalid_grant", "error_description": "PKCE verification failed"},
+                status_code=400,
+            )
+
+    # Issue token
     access_token = secrets.token_urlsafe(32)
-    oauth_tokens[access_token] = {
-        "client_id": client_id,
-        "scope": "mcp"
-    }
+    oauth_store.store_token(access_token, AccessToken(client_id=client_id, scope="mcp"))
 
-    # Clean up used code
-    del oauth_codes[code]
+    logger.info(f"Issued access token for {client_id}")
 
-    logger.info(f"Issued access token for client {client_id}")
+    return JSONResponse(
+        {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": int(ACCESS_TOKEN_LIFETIME.total_seconds()),
+        }
+    )
 
-    return JSONResponse({
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": 3600
-    })
+
+# Info Endpoints
+
 
 @app.get("/")
 async def root_info(request: Request):
-    """MCP Server information endpoint"""
-    base_url = str(request.base_url).rstrip("/")
-    return JSONResponse({
-        "name": "Obsidian Vault MCP Server",
-        "version": "1.0.0",
-        "protocol": "mcp",
-        "protocolVersion": "2024-11-05",
-        "transport": {
-            "type": "sse",
-            "sse_url": f"{base_url}/sse"
-        },
-        "capabilities": {
-            "tools": {}
+    base = str(request.base_url).rstrip("/")
+    return JSONResponse(
+        {
+            "name": "Obsidian Vault MCP Server",
+            "version": "1.0.0",
+            "protocol": "mcp",
+            "protocolVersion": "2024-11-05",
+            "transport": {"type": "sse", "sse_url": f"{base}/sse"},
+            "capabilities": {"tools": {}},
         }
-    })
+    )
+
+
+@app.get("/health")
+async def health():
+    return JSONResponse(
+        {
+            "status": "healthy" if file_watcher.is_healthy() else "degraded",
+            "file_watcher": file_watcher.is_healthy(),
+        }
+    )
+
+
+# MCP Protocol Endpoints
+
+
+async def handle_mcp_request(body: dict) -> JSONResponse:
+    """Handle MCP JSON-RPC requests."""
+    method = body.get("method", "")
+    request_id = body.get("id")
+
+    # Notifications don't need responses
+    if method.startswith("notifications/"):
+        return JSONResponse({"jsonrpc": "2.0"})
+
+    if method == "initialize":
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "Obsidian Vault MCP Server", "version": "1.0.0"},
+                },
+            }
+        )
+
+    if method == "tools/list":
+        tools = await list_tools()
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "tools": [
+                        {"name": t.name, "description": t.description, "inputSchema": t.inputSchema}
+                        for t in tools
+                    ]
+                },
+            }
+        )
+
+    if method == "tools/call":
+        params = body.get("params", {})
+        result = await call_tool(params.get("name"), params.get("arguments", {}))
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": [
+                        {"type": r.type, "text": r.text if hasattr(r, "text") else str(r)}
+                        for r in result
+                    ]
+                },
+            }
+        )
+
+    return JSONResponse(
+        {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32601, "message": f"Method not found: {method}"},
+        },
+        status_code=400,
+    )
+
 
 @app.post("/")
 async def root_post(request: Request):
-    """Handle MCP protocol POST requests via HTTP transport"""
     try:
         body = await request.json()
-        method = body.get('method', 'unknown')
-        logger.info(f"Received MCP request: {method}")
-
-        # Handle notifications (no response needed)
-        if method.startswith("notifications/"):
-            logger.info(f"Processed notification: {method}")
-            return JSONResponse({"jsonrpc": "2.0"}, status_code=200)
-
-        # Handle MCP protocol messages
-        if method == "initialize":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {}
-                    },
-                    "serverInfo": {
-                        "name": "Obsidian Vault MCP Server",
-                        "version": "1.0.0"
-                    }
-                }
-            })
-        elif body.get("method") == "tools/list":
-            tools = await list_tools()
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "result": {
-                    "tools": [
-                        {
-                            "name": t.name,
-                            "description": t.description,
-                            "inputSchema": t.inputSchema
-                        } for t in tools
-                    ]
-                }
-            })
-        elif body.get("method") == "tools/call":
-            params = body.get("params", {})
-            result = await call_tool(params.get("name"), params.get("arguments", {}))
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "result": {
-                    "content": [
-                        {
-                            "type": r.type,
-                            "text": r.text if hasattr(r, 'text') else str(r)
-                        } for r in result
-                    ]
-                }
-            })
-        else:
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": body.get("id"),
-                "error": {
-                    "code": -32601,
-                    "message": f"Method not found: {body.get('method')}"
-                }
-            }, status_code=400)
+        return await handle_mcp_request(body)
     except Exception as e:
-        logger.error(f"Error handling MCP request: {e}")
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": body.get("id") if "body" in locals() else None,
-            "error": {
-                "code": -32603,
-                "message": str(e)
-            }
-        }, status_code=500)
+        logger.error(f"MCP request failed: {e}", exc_info=True)
+        return JSONResponse(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)}},
+            status_code=500,
+        )
+
 
 @app.get("/sse")
 async def sse_root(request: Request):
-    """MCP SSE endpoint at root level for Claude compatibility"""
-    return await mcp_app.handle_sse(request.scope, request.receive, request._send)
+    scope = request.scope
+    receive = request.receive
+
+    async def send(message):
+        # Proper ASGI send wrapper
+        if hasattr(request, "_send"):
+            await request._send(message)
+
+    return await mcp_app.handle_sse(scope, receive, send)
+
 
 @app.post("/messages")
 async def messages_root(request: Request):
-    """MCP messages endpoint at root level for Claude compatibility"""
-    return await mcp_app.handle_messages(request.scope, request.receive, request._send)
+    scope = request.scope
+    receive = request.receive
+
+    async def send(message):
+        if hasattr(request, "_send"):
+            await request._send(message)
+
+    return await mcp_app.handle_messages(scope, receive, send)
+
 
 @app.get("/mcp/sse")
-async def sse(request: Request):
-    # Pass raw ASGI scope to the transport
-    return await mcp_app.handle_sse(request.scope, request.receive, request._send)
+async def mcp_sse(request: Request):
+    return await sse_root(request)
+
 
 @app.post("/mcp/messages")
-async def messages(request: Request):
-    return await mcp_app.handle_messages(request.scope, request.receive, request._send)
+async def mcp_messages(request: Request):
+    return await messages_root(request)
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -12,6 +12,12 @@ services:
       # Static OAuth credentials
       - OAUTH_CLIENT_ID=mcp-obsidian-client
       - OAUTH_CLIENT_SECRET=super-secret-obsidian-key-change-this
+
+      # OpenRouter API Configuration
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=openai/text-embedding-3-small
+      - OPENROUTER_BATCH_SIZE=25
+      - OPENROUTER_TIMEOUT=30
     volumes:
       - /home/nihil/Wanderland/WanderlandReX/:/vault
       - mcp_certs:/app/certs

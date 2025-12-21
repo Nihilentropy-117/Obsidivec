@@ -4,7 +4,7 @@ import logging
 import glob
 import os
 import chromadb
-from sentence_transformers import SentenceTransformer
+from search.openrouter_embedder import OpenRouterEmbedder
 import frontmatter
 from watchdog.observers.polling import PollingObserver as Observer
 from watchdog.events import FileSystemEventHandler
@@ -44,31 +44,49 @@ class VaultEventHandler(FileSystemEventHandler):
 class SemanticSearchEngine:
     """
     Fast semantic search engine using ChromaDB and watchdog.
-    - Uses sentence-transformers for embeddings
+    - Uses OpenRouter API for embeddings
     - ChromaDB for persistent vector storage
     - Watchdog for real-time file monitoring
     - Only updates changed files (not full re-index)
     """
 
-    def __init__(self, vault_path: Path, db_path: Path = None, model_name: str = "BAAI/bge-small-en-v1.5"):
+    def __init__(self, vault_path: Path, db_path: Path = None, api_key: str = None, model: str = None):
         """Initialize the semantic search engine."""
         self.vault_path = vault_path
         self.db_path = db_path or (vault_path.parent / "chroma_data")
-        self.model_name = model_name
+
+        # API configuration
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self.model = model or os.getenv("OPENROUTER_MODEL", "openai/text-embedding-3-small")
+        self.batch_size = int(os.getenv("OPENROUTER_BATCH_SIZE", "25"))
+        self.timeout = int(os.getenv("OPENROUTER_TIMEOUT", "30"))
+
+        # Validate API key
+        if not self.api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable must be set. "
+                "Get your API key from https://openrouter.ai"
+            )
+
         self.collection_name = "obsidian_vault"
         self.default_split_token = "\n\n"
 
-        self.model = None
+        self.embedder = None
         self.client = None
         self.collection = None
         self.observer = None
 
-    def _load_model(self):
-        """Load the embedding model."""
-        if self.model is None:
-            logger.info(f"Loading embedding model ({self.model_name})...")
-            self.model = SentenceTransformer(self.model_name)
-            logger.info("Embedding model loaded successfully")
+    def _load_embedder(self):
+        """Initialize the OpenRouter API embedder."""
+        if self.embedder is None:
+            logger.info(f"Initializing OpenRouter embedder ({self.model})...")
+            self.embedder = OpenRouterEmbedder(
+                api_key=self.api_key,
+                model=self.model,
+                batch_size=self.batch_size,
+                timeout=self.timeout
+            )
+            logger.info("OpenRouter embedder initialized successfully")
 
     def _connect_db(self):
         """Connect to ChromaDB."""
@@ -83,8 +101,8 @@ class SemanticSearchEngine:
         """
         Process a single file: delete old vectors, chunk, embed, and ingest.
         """
-        if not self.model or not self.collection:
-            logger.error(f"Skipping {filepath}, model/DB not initialized.")
+        if not self.embedder or not self.collection:
+            logger.error(f"Skipping {filepath}, embedder/DB not initialized.")
             return
 
         logger.info(f"Processing file: {filepath}")
@@ -114,7 +132,13 @@ class SemanticSearchEngine:
             # 4. Generate embeddings with filename prefix
             filename = os.path.basename(filepath)
             prefixed_chunks = [f"{filename}:part\n---\n{chunk}" for chunk in raw_chunks]
-            embeddings = self.model.encode(prefixed_chunks, show_progress_bar=False).tolist()
+
+            try:
+                embeddings = self.embedder.encode(prefixed_chunks)
+                logger.info(f"Generated {len(embeddings)} embeddings for {filepath}")
+            except Exception as e:
+                logger.error(f"Failed to generate embeddings for {filepath}: {e}")
+                raise
 
             # 5. Store in ChromaDB
             doc_ids = [f"{filepath}_{i}" for i in range(len(raw_chunks))]
@@ -190,8 +214,8 @@ class SemanticSearchEngine:
         """Start the file system watcher."""
         logger.info("Starting file watcher...")
 
-        # Load model and connect to DB
-        self._load_model()
+        # Initialize embedder and connect to DB
+        self._load_embedder()
         self._connect_db()
 
         # Perform initial scan
@@ -223,13 +247,17 @@ class SemanticSearchEngine:
         Returns:
             List of tuples: (file_path, full_content, similarity_score, matching_chunk)
         """
-        if not self.model or not self.collection:
+        if not self.embedder or not self.collection:
             logger.error("Search engine not initialized")
             return []
 
         try:
             # Generate query embedding
-            query_embedding = self.model.encode([query], show_progress_bar=False).tolist()
+            try:
+                query_embedding = self.embedder.encode([query])
+            except Exception as e:
+                logger.error(f"Failed to generate query embedding: {e}")
+                raise
 
             # Search in ChromaDB
             results = self.collection.query(
