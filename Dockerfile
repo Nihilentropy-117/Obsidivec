@@ -1,30 +1,19 @@
+# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
+# Set the working directory
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssl \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
+# Copy the dependencies file to the working directory
 COPY requirements.txt .
-# Add sse-starlette explicitly for the manual implementation
-RUN pip install --no-cache-dir -r requirements.txt sse-starlette
 
-COPY server.py .
-COPY tools.py .
-COPY start.sh .
-COPY search/ ./search/
-COPY base_engine.py .
-COPY templates.md .
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN chmod +x start.sh
-RUN mkdir /vault
-ENV VAULT_PATH="/vault"
+# Copy application files
+COPY main.py .
+COPY telegram_bot.py .
+COPY LLMsearch.py .
 
-EXPOSE 8000
-
-ENTRYPOINT ["./start.sh"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

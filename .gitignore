@@ -1,34 +1,26 @@
-# IDE and tool configurations
-.claude/
-.serena/
-.idea/
-.vscode/
+# Obsidian configuration and vault files
+obsidian_config/
+vault/
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
 .venv/
 venv/
 ENV/
+env/
 
-# Data directories
-chroma_data/*
-obsidian_config/*
-vault/*
-!chroma_data/.gitkeep
-!vault/.gitkeep
-!obsidian_config/.gitkeep
+# ChromaDB
+chroma_data/
 
-# Secrets and environment
+# IDE
+.idea/
+.vscode/
+
+# Environment
 .env
-.env.local
-.env.*.local
-
-# OS files
-.DS_Store
-Thumbs.db
-
-reference/
+*.env
+!example.env
