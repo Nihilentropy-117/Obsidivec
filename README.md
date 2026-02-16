@@ -1,11 +1,15 @@
 # Obsidivec
 
-A powerful vector search engine for Obsidian vaults with integrated Telegram bot support and AI-powered query responses.
+A powerful vector search engine for Obsidian vaults with Obsidian Bases integration, Telegram bot support, and AI-powered query responses.
 
 ## Features
 
 - **Vector Search**: Semantic search across your Obsidian vault using sentence transformers
-- **Real-time Sync**: Automatic file watching and indexing with ChromaDB
+- **Obsidian Bases Integration**: Full CRUD and query support for `.base` files — create, read, update, delete, and execute Bases filter expressions from the API
+- **Bases-Scoped Search**: Restrict vector search results to notes matching a Base's filters
+- **Search-to-Base Generation**: Convert vector search results into `.base` files that Obsidian renders as table/list/cards views
+- **Property-Aware Indexing**: Frontmatter properties are stored as ChromaDB metadata using the Bases `note.*` / `file.*` property model
+- **Real-time Sync**: Automatic file watching for both `.md` and `.base` files with ChromaDB indexing
 - **Obsidian Web Interface**: Full Obsidian desktop app accessible via browser with VNC
 - **Obsidian Sync Support**: Enable Obsidian Sync through the web interface for cloud synchronization
 - **Telegram Bot**: Optional Telegram bot interface for querying your vault
@@ -189,13 +193,14 @@ If no `split_token` is specified, the system uses `DEFAULT_SPLIT_TOKEN` from env
 ```bash
 GET /health
 ```
-Returns server initialization status and collection count.
+Returns server initialization status, collection count, and loaded Bases count.
 
 **Response:**
 ```json
 {
   "status": "ok",
-  "collection_count": 1234
+  "collection_count": 1234,
+  "bases_count": 3
 }
 ```
 
@@ -207,9 +212,12 @@ Content-Type: application/json
 
 {
   "query": "your search query",
-  "n_results": 5
+  "n_results": 5,
+  "base_filter": "optional/path/to/filter.base"
 }
 ```
+
+The optional `base_filter` field restricts results to notes matching the Base's filter expression.
 
 **Response:**
 ```json
@@ -218,11 +226,17 @@ Content-Type: application/json
     {
       "filepath": "/vault/notes/example.md",
       "chunk_index": 0,
-      "document": "Matching text chunk..."
+      "document": "Matching text chunk...",
+      "properties": {
+        "file.name": "example",
+        "note.status": "active"
+      }
     }
   ]
 }
 ```
+
+When `base_filter` is provided, each result includes its full `properties` dict.
 
 ### Reindex
 ```bash
@@ -237,6 +251,88 @@ Triggers a full vault re-index. Useful after bulk changes.
   "status": "Reindex started in background."
 }
 ```
+
+### Bases API
+
+The Bases API provides full CRUD operations for `.base` files and the ability to execute their filter expressions server-side.
+
+#### List All Bases
+```bash
+GET /bases
+```
+Returns a summary of every `.base` file in the vault.
+
+#### Get Vault Properties
+```bash
+GET /bases/properties
+```
+Scans all vault files and returns every unique property key with observed value types. Useful for building filter expressions.
+
+#### Get a Specific Base
+```bash
+GET /bases/{path_to_file.base}
+```
+Returns the parsed YAML configuration of a `.base` file.
+
+#### Create a Base
+```bash
+POST /bases
+Content-Type: application/json
+
+{
+  "filepath": "my-view.base",
+  "filters": "note.status == \"active\"",
+  "properties": {
+    "note.status": {"displayName": "Status"},
+    "note.priority": {"displayName": "Priority"}
+  },
+  "views": [
+    {"type": "table", "name": "Active Notes", "order": ["note.status", "note.priority"]}
+  ]
+}
+```
+
+#### Update a Base
+```bash
+PUT /bases/{path_to_file.base}
+Content-Type: application/json
+
+{
+  "filters": "note.status == \"done\""
+}
+```
+Merges updates into the existing `.base` file.
+
+#### Delete a Base
+```bash
+DELETE /bases/{path_to_file.base}
+```
+
+#### Query a Base
+```bash
+POST /bases/query
+Content-Type: application/json
+
+{
+  "base_filepath": "my-view.base"
+}
+```
+Evaluates the Base's filter expression against every markdown file in the vault and returns matching notes with their properties. This mirrors what Obsidian Bases does internally.
+
+#### Generate a Base from Search Results
+```bash
+POST /bases/from-search
+Content-Type: application/json
+
+{
+  "query": "machine learning",
+  "n_results": 10,
+  "name": "ML Notes",
+  "view_type": "table",
+  "output_path": "ml-results.base"
+}
+```
+Runs a vector search and generates a `.base` file targeting the matching notes. Obsidian will render this Base as a table/list/cards view. If `output_path` is omitted, the config is returned without writing to disk.
 
 ## Usage Examples
 
@@ -299,18 +395,40 @@ Once enabled, simply message your bot with any query:
 
 ### Indexing Pipeline
 
-1. **File Detection**: Watchdog monitors vault for `.md` file changes
+1. **File Detection**: Watchdog monitors vault for `.md` and `.base` file changes
 2. **Frontmatter Parsing**: Extracts metadata and chunking configuration
-3. **Document Chunking**: Splits content based on `split_token`
-4. **Embedding Generation**: Creates vector embeddings with filename prefix
-5. **Storage**: Stores in ChromaDB with metadata (filepath, chunk_index)
+3. **Property Extraction**: Stores frontmatter as `note.*` metadata in ChromaDB (aligned with Bases property model)
+4. **Document Chunking**: Splits content based on `split_token`
+5. **Embedding Generation**: Creates vector embeddings with filename prefix
+6. **Storage**: Stores in ChromaDB with enriched metadata (filepath, chunk_index, note properties)
+7. **Bases Cache**: `.base` files are parsed and cached in memory for fast filter evaluation
 
 ### Search Pipeline
 
 1. **Query Embedding**: Converts search query to vector
 2. **Similarity Search**: ChromaDB finds nearest neighbors
-3. **Result Formatting**: Returns documents with metadata
-4. **LLM Enhancement**: (Optional) Sends to OpenRouter for summarization
+3. **Bases Filtering**: (Optional) Post-filters results against a `.base` file's filter expression
+4. **Property Enrichment**: Results include structured `note.*` and `file.*` properties when Bases filter is active
+5. **Result Formatting**: Returns documents with metadata
+6. **LLM Enhancement**: (Optional) Sends to OpenRouter for summarization
+
+### Obsidian Bases Integration
+
+The system integrates with Obsidian's Bases feature (introduced in Obsidian 1.9, API in 1.10) which provides database-like views over vault notes.
+
+**How it works:**
+- `.base` files are YAML configuration files that define filters, properties, formulas, and views
+- The server parses and caches all `.base` files on startup and watches for changes
+- Filter expressions from `.base` files can be evaluated server-side against vault notes
+- Vector search results can be scoped by Base filters, or converted into new `.base` files
+- Properties follow the Bases naming convention: `note.*` for frontmatter, `file.*` for file metadata
+
+**Supported filter syntax:**
+- Comparisons: `note.status == "active"`, `note.priority != "low"`
+- Numeric: `note.count > 5`, `note.score >= 0.8`
+- Functions: `contains(note.tags, "python")`, `startsWith(file.name, "2024")`, `endsWith(file.path, ".md")`
+- Logical: `<expr> and <expr>`, `<expr> or <expr>`, `not <expr>`
+- Compound: `{"and": [...]}`, `{"or": [...]}`, `{"not": [...]}`
 
 ### Telegram Bot Integration
 
@@ -323,7 +441,8 @@ Once enabled, simply message your bot with any query:
 
 ```
 Obsidivec/
-├── main.py                 # FastAPI server + file watcher
+├── main.py                 # FastAPI server + file watcher + Bases API
+├── bases_manager.py        # Obsidian Bases file parser, filter evaluator, and manager
 ├── telegram_bot.py         # Telegram bot implementation
 ├── LLMsearch.py           # CLI search client with AI
 ├── reindex.py             # Reindex trigger script
@@ -332,7 +451,7 @@ Obsidivec/
 ├── docker-compose.yml     # Multi-service orchestration
 ├── example.env            # Environment template
 ├── .env                   # Your configuration (create from example.env)
-├── vault/                 # Obsidian vault directory
+├── vault/                 # Obsidian vault directory (contains .md and .base files)
 ├── chroma_data/           # ChromaDB persistence
 └── obsidian_config/       # Obsidian web config
 ```
@@ -388,11 +507,14 @@ This helps the model understand document context during similarity search.
 ```
 uvicorn (main process)
 ├── FastAPI App (main thread)
+│   ├── Vector Search endpoints
+│   └── Bases API endpoints (CRUD + query + from-search)
 ├── File Watcher (daemon thread)
 │   ├── Load embedding model
 │   ├── Connect to ChromaDB
-│   ├── Monitor vault changes
-│   └── Process file events
+│   ├── Monitor vault for .md and .base changes
+│   ├── Process file events → embed + store properties
+│   └── Maintain in-memory Bases cache
 └── Telegram Bot (separate process)
     └── asyncio event loop with signal handlers
 ```
