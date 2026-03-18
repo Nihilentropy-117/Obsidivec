@@ -20,7 +20,7 @@ from typing import Any
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_http_request
 
 from vaultkeeper.agent.orchestrator import Orchestrator
 from vaultkeeper.agent.router import QueryRouter
@@ -169,11 +169,11 @@ class BearerTokenMiddleware(Middleware):
             return
 
         try:
-            headers = get_http_headers()
-        except Exception:
+            request = get_http_request()
+        except RuntimeError:
             return  # Not in HTTP context (stdio transport)
 
-        auth_header = headers.get("authorization", "")
+        auth_header = request.headers.get("authorization", "")
         if not auth_header.startswith("Bearer "):
             raise ToolError("Missing or invalid Authorization header")
 
