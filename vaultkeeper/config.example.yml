@@ -1,0 +1,47 @@
+# Vaultkeeper Configuration
+# Environment variables can be referenced with ${VAR_NAME}
+
+vault:
+  path: /vault
+  index_on_startup: true
+  watch: true
+  debounce_seconds: 3.0
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  transport: streamable-http
+  auth:
+    token: "${VAULTKEEPER_TOKEN}"
+
+models:
+  provider: openrouter
+  api_key: "${OPENROUTER_API_KEY}"
+  base_url: https://openrouter.ai/api/v1
+  router:
+    model: "google/gemini-flash-2.0-lite"
+    max_tokens: 500
+    temperature: 0.0
+  extractor:
+    model: "google/gemini-flash-2.0"
+    max_tokens: 2000
+    temperature: 0.0
+  synthesizer:
+    model: "google/gemini-flash-2.0"
+    max_tokens: 1000
+    temperature: 0.1
+
+embeddings:
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  model: openai/text-embedding-3-small
+  dimensions: 1536
+  batch_size: 64
+
+index:
+  db_path: /data/lancedb
+  fact_extraction: true
+  chunk_max_tokens: 1500
+
+undo:
+  max_operations: 50
