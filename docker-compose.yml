@@ -2,7 +2,7 @@ services:
   vaultkeeper:
     build: .
     ports:
-      - "8000:8000"
+      - "41795:8000"
     volumes:
       # Mount your Obsidian vault (read/write)
       - ./Vault:/vault
