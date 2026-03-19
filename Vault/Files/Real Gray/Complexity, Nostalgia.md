@@ -1,0 +1,9 @@
+
+
+I would argue that it’s easier to cook something difficult than something simple for people a lot of the time. It’s objectively easier to make someone a chicken cacciatore or pasta puttanesca than it is to make them a BLT or a traditionally dressed American hamburger. You just don’t get the same roadblocks of nostalgia.
+
+You don’t have a lot of granularity in a cheeseburger or a BLT. You don’t have a lot of knobs to turn to adjust the flavor profile. And yet people still have such strong opinions on it. The only knobs you can turn are thickness and seasoning of the beef, maybe a different type of cheese and a different brand and style of bun. Beyond those, there’s not really a whole lot you can do.
+
+And yet people’s flavor profiles on hamburgers are intrinsically tied to nostalgia—tied to the brand of bun used in their youth, tied to the seasoning their parents used on the hamburger, what kind of grill they owned as a child. It’s impossible to tune all of those variables down without literally having been there for them as a child. These things affect their preferences to this day and make it almost impossible to recreate someone’s perfect hamburger.
+
+You make something that isn’t an integral part of their upbringing, though—like a pasta puttanesca (except, of course, for those people for whom pasta puttanesca was an integral part of their childhood, in which case this doesn’t apply; we should find another example)—for the majority of people, they have no integral opinions on it. They might have preferences, but for the most part, they’ll be willing to make those preferences go away in order to enjoy the experience of quality food.​​​​​​​​​​​​​​​​

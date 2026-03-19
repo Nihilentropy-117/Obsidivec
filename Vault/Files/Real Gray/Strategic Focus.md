@@ -1,0 +1,5 @@
+We need to put a point on this.
+Audacity is a factor—that’s clear. Self-confidence chains from that. But we also have to recognize our unique weaknesses. Doing what other people do was never going to work. It’s impossible to compete on that playing field. No matter how much information we gather, we’ll never beat people with inherent knowledge of those systems. That’s a lost cause.
+But we have specific strengths that can be exploited: audacity, knowledge, and an inherent understanding of how other systems work.
+Here’s what needs to be done: separate this whole general mishmash of reality into at least two categories. Category one: things we’re good at. Category two: things we are not inherently good at. Use those categories to classify exactly what needs to be done and the path we can take.
+There is a path that’s heavily weighted toward the things we have in hand. We just need to define that trajectory.​​​​​​​​​​​​​​​​

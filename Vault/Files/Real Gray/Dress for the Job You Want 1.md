@@ -1,0 +1,23 @@
+Dress for the job you want, not for the job you have. Or alternatively, dress for the job you’re interviewing for. No—dress for the job you want, not the job you’re interviewing for. I’ve heard that too. But I like “dress for the job you want, not the job you have.”
+
+That’s one of them fucking sayings, isn’t it? That’s definitely one of those things I really wish someone had told me a long time ago and really hammered in, you know? Like, I’m sure I’ve been hearing it for years, but I really wish at a very early age someone had sat down with me and hammered it in and explained to me what it was and why it was the thing. And I never really picked up on it until way later in my life than I would have liked.
+
+It’s a multifaceted thing, you know? It’s about self-respect. It’s about comfort. It’s about your approach to the world.
+
+I guess as a secondary corollary here, we also have the quote—I don’t remember exactly what it is—it’s like, “Always do one thing the way you do everything,” or “How you do one thing is how you do all things.” So basically, do everything well or do nothing well.
+
+If you dress for the job that you have, you are taking the commitment to do that well. I suppose that’s probably where the making your bed every day thing comes into play, right? It’s just about doing everything well. It’s about the commitment to doing things properly.
+
+Because you start out at the bottom, you start out at the entry-level job, you start out at a job at the fast food or the retail, where you can get away with wearing fringy old Metallica shirts or whatever, and that separates out the chaff, you know? Just because you’re allowed to wear shitty clothes, just because you’re allowed to not bathe and not dress yourself—the way you do one thing reflects the way you do all things.
+
+So when you show up to a job interview overdressed, it makes a statement. When you show up to your job every day overdressed, it makes a statement. The statement of self-respect. The statement of how you live your life. You live your life in a clean manner. You live your life in a put-together manner. It tells people something about you.
+
+And I got to admit, for the longest time, I always thought it was just a rules thing. It was, “Well, this is the outfit that the powers that be have decided looks good. This is the outfit that whatever arbitrary people are in charge of things say that people should wear.” And I guess that is still true. Fashions come in and out, and I still really don’t see any particular reason why a shirt with a collar is inherently more put together than a shirt without a collar, but that is the fashion of our times. And the statement you’re making is that you are put together enough to be aware of the fashion of our times, and you care enough about yourself as an individual and your place in society to follow the fashion of our times, whether or not it makes any sense.
+
+It’s not a bending to authority thing. I guess, in a way, it still is a bending to authority thing. You’re accepting fashion. But you can make your own fashion to a degree. You can do something different. You can be a rebel. You just have to obey the basic rules. You have to—whatever it is you’re gonna do, still do it well. Still be put together, still be neat. Still give the impression that you’ve put yourself together in the same manner that you’re going to do the rest of your life, that you’re going to work at your job, that you’re going to love your wife, that you’re going to raise your children in a very correct and put-together sort of way.
+
+Because it’s confidence, right? That’s how you exude confidence—to be put together, to know what you’re doing, to know what you’re saying, to know what you’re talking about. And knowing with certainty that you do everything well, and being known by others with certainty that you do everything well, and that you are put together, and that you are reliable, gives you something to be confident in.
+
+And that’s really the secret, at the end of the day. As I have definitely written elsewhere, to have confidence—but having confidence only carries you so far if you haven’t earned the self-confidence. If you’re just full of shit, you can fake your way through a lot, but at the end of the day, you have to actually be confident. You actually have to actually have the mettle to back up what you’re putting down, or eventually the bottom’s gonna fall out.
+
+But yeah, I wish I had known at least how to begin a long time ago, ’cause you really do have to dress for the job you want.​​​​​​​​​​​​​​​​ 

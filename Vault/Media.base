@@ -1,0 +1,17 @@
+filters:
+  and:
+    - file.folder == "Files/Media"
+views:
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - type
+      - status
+      - release_date
+      - author_creator
+    sort:
+      - property: file.name
+        direction: ASC
+      - property: release_date
+        direction: DESC

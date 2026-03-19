@@ -1,0 +1,6 @@
+Our entire world, our very existence, is made up of a sort of common ground of practicality—the physicality of material things, the things that are in front of us, the things we see, touch, hear, feel, and smell. The trees, the rocks, the buildings.
+But an enormous part of our reality is the subjective reality. That’s the reality made up of an overlying layer of perspective—reality from our point of view.
+And it’s this layer of subjective reality, not the layer of objective reality, that can be harnessed. Because this layer of subjective reality has enormous potential for altering the way the world functions.
+This mass hallucination we call society is just a camel balancing on the head of a pin. And it is enormously easy to offset it in any way we want, just by knowing the right place to push. The right visions to have. The right sheer force of will to exert on the world around us.
+No, I’m not advocating that psychics are a thing. I’m not advocating for literal telekinesis. I’m only saying that an individual with sufficient force of will, with sufficient strength of mentality, with sufficient belief, can beget whatever reality they want.
+And the world will follow.​​​​​​​​​​​​​​​​

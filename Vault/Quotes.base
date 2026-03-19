@@ -1,0 +1,6 @@
+filters:
+  and:
+    - file.folder == "Files/Quotes"
+views:
+  - type: table
+    name: Table

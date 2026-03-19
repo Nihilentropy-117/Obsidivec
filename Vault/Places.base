@@ -1,0 +1,26 @@
+filters:
+  and:
+    - file.folder == "Files/Places"
+views:
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - tags
+      - type
+      - status
+      - rating
+      - location
+      - life_context
+    columnSize:
+      note.type: 421
+      note.location: 390
+  - type: table
+    name: Not Visited Cincinnati
+    order:
+      - file.name
+      - location
+      - rating
+      - status
+      - life_context
+      - contact_info

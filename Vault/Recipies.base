@@ -1,0 +1,6 @@
+filters:
+  and:
+    - file.folder == "Files/Recipies"
+views:
+  - type: table
+    name: Table

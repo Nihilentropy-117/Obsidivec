@@ -1,0 +1,21 @@
+filters:
+  and:
+    - file.folder == "Files/Hexhiker"
+properties:
+  note.category:
+    displayName: tags
+views:
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - status
+      - domain
+      - category
+    sort:
+      - property: domain
+        direction: ASC
+      - property: status
+        direction: ASC
+    columnSize:
+      note.status: 171
