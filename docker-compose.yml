@@ -5,7 +5,7 @@ services:
       - "8000:8000"
     volumes:
       # Mount your Obsidian vault (read/write)
-      - ${VAULT_PATH:?Set VAULT_PATH to your Obsidian vault directory}:/vault
+      - ./Vault:/vault
       # Persistent storage for ChromaDB index
       - ./vaultkeeper-data:/data/chromadb
       # Config file
