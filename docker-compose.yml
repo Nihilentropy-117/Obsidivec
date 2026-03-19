@@ -7,7 +7,7 @@ services:
       # Mount your Obsidian vault (read/write)
       - ${VAULT_PATH:?Set VAULT_PATH to your Obsidian vault directory}:/vault
       # Persistent storage for ChromaDB index
-      - vaultkeeper-data:/data/chromadb
+      - ./vaultkeeper-data:/data/chromadb
       # Config file
       - ./config.yml:/etc/vaultkeeper/config.yml:ro
     environment:
@@ -15,6 +15,3 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - VAULTKEEPER_CONFIG=/etc/vaultkeeper/config.yml
     restart: unless-stopped
-
-volumes:
-  vaultkeeper-data:
