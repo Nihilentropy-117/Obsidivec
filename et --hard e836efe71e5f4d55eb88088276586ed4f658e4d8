@@ -1,0 +1,181 @@
+[33mcommit 264cb389dcac708a41bd6e9edf36723cdc971bb5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Thu Mar 19 22:31:58 2026 -0400
+
+    Removed YAML
+
+[33mcommit e836efe71e5f4d55eb88088276586ed4f658e4d8[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: graylott <gray.lott@live.com>
+Date:   Thu Mar 19 16:37:55 2026 -0400
+
+    Changed Port
+
+[33mcommit af057e31a1d0159309e6dde5ced9f9266ca9029a[m
+Author: graylott <gray.lott@live.com>
+Date:   Thu Mar 19 16:33:27 2026 -0400
+
+    Moved Vault
+
+[33mcommit 95c7ae410f53f61aba0a9ce81fd6efd02d1c2270[m
+Author: graylott <gray.lott@live.com>
+Date:   Thu Mar 19 16:31:00 2026 -0400
+
+    Restructure Storage
+
+[33mcommit bf549b7166a1920e0620148dd79907ed8c2f3139[m
+Author: graylott <gray.lott@live.com>
+Date:   Thu Mar 19 16:24:08 2026 -0400
+
+    Restructure Folders
+
+[33mcommit cb55486c8cbf55c6f79f3dae8769828696372212[m
+Merge: 8ebc2fb 89d8b0e
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Thu Mar 19 16:16:06 2026 -0400
+
+    Merge pull request #3 from Nihilentropy-117/Rewrite
+    
+    Rewrite to v2 to take advantage of new MCP toolkits
+
+[33mcommit 89d8b0ef4857d2a22107d17600ed7a01482fb2fb[m
+Merge: 901e7c6 ff076f0
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Wed Mar 18 16:52:31 2026 -0400
+
+    Merge pull request #2 from Nihilentropy-117/claude/rewrite-ittmi
+    
+    Rewrite: replace old codebase l
+
+[33mcommit ff076f0910786fe085586d6ee17a02a4e4562638[m[33m ([m[1;31morigin/claude/rewrite-ittmi[m[33m)[m
+Author: Claude <noreply@anthropic.com>
+Date:   Wed Mar 18 20:51:19 2026 +0000
+
+    Rewrite: replace old codebase with vaultkeeper
+    
+    Remove legacy files and extract vaultkeeper project as the new codebase.
+    
+    https://claude.ai/code/session_01FETAU1S7Bedkkz7Dvic49D
+
+[33mcommit 901e7c6f76076f88032445055b7edf4a530d1c62[m
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Wed Mar 18 16:49:29 2026 -0400
+
+    Add files via upload
+
+[33mcommit 8ebc2fb4667b6879f75457fb59f76474b3d880b2[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Sun Dec 21 21:56:30 2025 -0500
+
+    Restructure project layout
+
+[33mcommit 84f1096522edfd7a158ada0d45c5578b714ba5b6[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Sun Dec 21 15:21:17 2025 -0500
+
+    Changed Embeddings to OpenRouter
+
+[33mcommit d227d815dc358cc4c7d36f4e701314e8c496c658[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Mon Nov 24 14:20:59 2025 -0500
+
+    Added the new 'Create Note' structure
+
+[33mcommit 6a6539d4a68d07d0d1d0ae594245b3c4dba206a0[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Sun Nov 23 20:55:17 2025 -0500
+
+    Fixed .Bases Integration
+
+[33mcommit a7a1d46eb1a8458d446e62c0ab96b49f85679013[m
+Author: Gray Lott <gray.lott@live.com>
+Date:   Sun Nov 23 11:40:47 2025 -0500
+
+    Refactor to Enable MCP Server
+
+[33mcommit 0030d111b53bad65e99254af08cd204c03f22d3e[m
+Merge: 0f0eeff f2ba54b
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Sun Nov 23 11:36:34 2025 -0500
+
+    Merge pull request #1 from Nihilentropy-117/obsidian-mcp-server-01EQBv7Ui8ATRgnTt1V8isy5
+    
+    Add comprehensive MCP server for Obsidian vault interaction
+
+[33mcommit f2ba54bdb9b4d5aa8b150f95839222a90ba6b1d4[m
+Author: Claude <noreply@anthropic.com>
+Date:   Mon Nov 17 18:05:00 2025 +0000
+
+    Add comprehensive MCP server for Obsidian vault interaction
+    
+    Implements a full-featured Model Context Protocol (MCP) server that provides
+    AI assistants with powerful tools to interact with Obsidian vaults.
+    
+    Features:
+    - Vector search using ChromaDB and sentence transformers
+    - Regular/fuzzy text search across all notes
+    - Complete CRUD operations (create, read, update, delete notes)
+    - Folder management
+    - Note modification via unified diff format
+    - Vault statistics and management
+    - OAuth 2.1 authentication with JWT validation
+    - Three MCP resources for vault access
+    - Two prompt templates for common workflows
+    
+    Tools implemented:
+    1. vector_search - Semantic search using embeddings
+    2. text_search - Regex and fuzzy text matching
+    3. create_note - Create new markdown notes with frontmatter
+    4. create_folder - Create vault directories
+    5. read_note - Read note contents and metadata
+    6. update_note_diff - Modify notes using diff/patch
+    7. delete_note - Safe deletion with trash folder option
+    8. list_notes - Browse vault with filtering
+    9. get_vault_stats - Comprehensive vault statistics
+    10. reindex_vault - Rebuild vector database index
+    
+    New files:
+    - mcp_server.py: Main MCP server implementation (1,000+ lines)
+    - MCP_README.md: Comprehensive documentation and usage guide
+    
+    Configuration updates:
+    - requirements.txt: Added MCP SDK, PyJWT, cryptography, httpx
+    - example.env: Added OAuth 2.1 configuration options with examples
+    
+    The server follows MCP best practices and OAuth 2.1 standards for
+    secure, production-ready AI agent integration.
+
+[33mcommit 0f0eeff1022dc7f3350af554dbf171200a40e9ad[m[33m ([m[1;33mtag: [m[1;33mrelease[m[33m)[m
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Mon Nov 3 12:02:08 2025 -0500
+
+    Update bot  message
+
+[33mcommit 002382bc285222f62827b9172f253806f5d2c5a0[m
+Author: Gray Lott <40811912+Nihilentropy-117@users.noreply.github.com>
+Date:   Mon Nov 3 12:01:19 2025 -0500
+
+    Add better readability in README
+
+[33mcommit f37c746f0822ca354d5bed24c7a9df5b0f543af1[m
+Author: Gray Lott <gray.lott@hexhiker.com>
+Date:   Tue Oct 28 23:56:47 2025 -0400
+
+    Add TL;DR quick start section
+
+[33mcommit 4d60b8eb16bcc5dda2be9d6df296b614afbdf2cf[m
+Author: Gray Lott <gray.lott@hexhiker.com>
+Date:   Mon Oct 27 23:38:15 2025 -0400
+
+    Update embedding model recommendations with 2025 SOTA models
+
+[33mcommit ceee4707b015b7b4f65c99e0583ccebafe18bdbc[m
+Author: Gray Lott <gray.lott@hexhiker.com>
+Date:   Mon Oct 27 23:35:05 2025 -0400
+
+    Document Obsidian web interface and Sync functionality
+
+[33mcommit d9082bb37238673fcf1581bf5ed8c4355be7c2dc[m
+Author: Gray Lott <gray.lott@hexhiker.com>
+Date:   Mon Oct 27 23:31:17 2025 -0400
+
+    Initial Commit

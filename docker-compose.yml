@@ -8,8 +8,6 @@ services:
       - ./Vault:/vault
       # Persistent storage for ChromaDB index
       - ./vaultkeeper-data:/data/chromadb
-      # Config file
-      - ./config.yml:/etc/vaultkeeper/config.yml:ro
     environment:
       - VAULTKEEPER_TOKEN=${VAULTKEEPER_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}

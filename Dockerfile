@@ -20,6 +20,7 @@ RUN mkdir -p /data/chromadb
 
 # Config location
 RUN mkdir -p /etc/vaultkeeper
+COPY config.yml /etc/vaultkeeper/config.yml
 
 EXPOSE 8000
 
